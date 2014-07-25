@@ -129,7 +129,6 @@ void queryCommands()
 
 void sendClear()
 {
-  delay(100
   if (client.connect(server, 80)) {
     #ifdef DEBUG
     Serial.println("Sending Clear");
@@ -188,7 +187,9 @@ void loop()
       if(buffer[buffer_ptr] == '\n')
       {
         if(command_valid)
-          adjust(buffer[command_ptr])
+        {
+          adjust(buffer[command_ptr]);
+        }
         buffer_ptr = 0;
         command_ptr = 0;
         command_valid = false;
