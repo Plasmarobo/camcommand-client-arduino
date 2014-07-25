@@ -16,6 +16,7 @@
 
 #define DEBUG
 
+#define DEFAULT_ADJUST 4
 #define BIG_ADJUST 32
 
 #include <Wire.h>
@@ -28,6 +29,9 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 //Expect Servos in slot 1 and slot 2
 #define TILT_SERVO 1
 #define PAN_SERVO 0
+
+#define TILT_CENTER 70
+#define PAN_CENTER 127
 
 uint8_t user_tilt = 70;
 uint8_t user_pan = 127;
@@ -60,7 +64,7 @@ int setPan(uint8_t pan)
 
 
 
-void adjust(char byteRecieved, uint8_t adjustment = 1)
+void adjust(char byteRecieved, uint8_t adjustment = DEFAULT_ADJUST)
 {
   
   switch(byteRecieved)
@@ -78,13 +82,13 @@ void adjust(char byteRecieved, uint8_t adjustment = 1)
       user_pan -= adjustment;
       break;
     case CENTER_PAN:
-      user_pan = 127;
+      user_pan = PAN_CENTER;
       break;
     case CENTER_TILT:
-      user_tilt = 127;
+      user_tilt = TILT_CENTER;
       break;
     default:
-      if(adjustment == 1)
+      if(adjustment == DEFAULT_ADJUST)
         adjust(byteRecieved+32, BIG_ADJUST);
       break;
   }
@@ -116,11 +120,11 @@ boolean last_connected = false;
 void queryCommands()
 {
   if (client.connect(server, 80)) {
-    #ifdef DEBUG
+#ifdef DEBUG
     Serial.println("Sending Query");
-    #endif
+#endif
     // Make a HTTP request:
-    sprintf(buffer, "GET /commands/list.txt?timestamp=%i HTTP/1.1", current_time);
+    sprintf(buffer, "GET /commands/list.txt?timestamp=%u HTTP/1.1", current_time);
     client.println(buffer);
     client.println("Host: camcommand.herokuapp.com");
     client.println("Connection: close");
@@ -131,58 +135,52 @@ void queryCommands()
 void sendClear()
 {
   if (client.connect(server, 80)) {
-    #ifdef DEBUG
+#ifdef DEBUG
     Serial.println("Sending Clear");
-    #endif
+#endif
     // Make a HTTP request:
     client.println( "GET /commands/clear?confirm=yes HTTP/1.1");
     client.println("Host: camcommand.herokuapp.com");
     client.println("Connection: close");
     client.println();
-    while(client.connected())
-    {
-      client.flush();
-    }
+    client.flush();
+    client.stop();
   }
 }
 
 void setup()
 {
-  #ifdef DEBUG
+#ifdef DEBUG
   Serial.begin(9600);
   Serial.println("Centering");
-  #endif
+#endif
   pwm.begin();
   pwm.setPWMFreq(60);
   setPan(user_pan);
   setTilt(user_tilt);
   
   if (Ethernet.begin(mac) == 0) {
-    #ifdef DEBUG
+#ifdef DEBUG
     Serial.println("Failed to configure Ethernet using DHCP");
-    #endif
-    // no point in carrying on, so do nothing forevermore:
-    // try to congifure using IP address instead of DHCP:
+#endif
     Ethernet.begin(mac, ip);
   }
   delay(1000);
-  #ifdef DEBUG
+#ifdef DEBUG
   Serial.println("connecting...");
-  #endif
-  queryCommands();
-  
+#endif
+  queryCommands();  
 }
+
 void loop()
 {
-  #ifdef DEBUG
-    if (Serial.available() > 0) {
-      // read the incoming byte:
-      serialCmd = Serial.read();
-      //Simple command routine
-      adjust(serialCmd);
-     }
-   #endif
-     // from the server, read them and print them:
+#ifdef DEBUG
+  //Accept commands over serial if we are in debug mode
+  if (Serial.available() > 0) {
+    serialCmd = Serial.read();
+    adjust(serialCmd);
+  }
+#endif
     if (client.available()) {
       buffer[buffer_ptr] = client.read();
       if(buffer[buffer_ptr] == '\n')
@@ -194,17 +192,19 @@ void loop()
         buffer_ptr = 0;
         command_ptr = 0;
         command_valid = false;
-      }else if(buffer[buffer_ptr] ==':')
-      {
+      }else if(buffer[buffer_ptr] == ':'){
+
         command_valid = true;
         buffer[buffer_ptr] = '\0';
         command_ptr = buffer_ptr++;
-      }else ++buffer_ptr;      
+
+      }else{
+		++buffer_ptr;      
+	  }
     }
     // if the server's disconnected, stop the client:
   if (!client.connected() && last_connected) {
-    client.stop();
-    //We might need to process the last line of the buffer if it's EOF instead of newline
+    last_connected = false;
     sendClear();
     //Reset
     buffer_ptr = 0;
@@ -212,5 +212,8 @@ void loop()
     command_valid = false;   
     delay(1000);
     queryCommands();
-  }else last_connected = client.connected();
+
+  }else{
+     last_connected = client.connected();
+  }
 }
