@@ -132,7 +132,7 @@ void HTTP(char* request)
 #endif
     client.stop();
   }
-  delay(500);
+  delay(150);
 }
 
 void queryCommands()
@@ -233,6 +233,10 @@ void parseCommandStream()
           //Intentionally discard data
           time_buffer[time_ptr] = '\0';
           current_time = atoi(time_buffer);
+#ifdef DEBUG
+            Serial.println("Read Time As");
+            Serial.println(current_time);
+#endif
           state = COMMAND_READ_STATE;
         }
         break;
@@ -269,7 +273,7 @@ void parseCommandStream()
 #endif
   if( needs_clear == true )
   {
-    clearCommands();
+    //clearCommands();
   }
 }
 
