@@ -111,6 +111,7 @@ uint8_t buffer_ptr = 0;
 uint8_t command_ptr = 0;
 uint32_t current_time = 0;
 boolean command_valid = false;
+boolean last_connected = false;
 
 void queryCommands()
 {
@@ -201,7 +202,7 @@ void loop()
       }else ++buffer_ptr;      
     }
     // if the server's disconnected, stop the client:
-  if (!client.connected()) {
+  if (!client.connected() && last_connected) {
     client.stop();
     //We might need to process the last line of the buffer if it's EOF instead of newline
     sendClear();
@@ -209,7 +210,7 @@ void loop()
     buffer_ptr = 0;
     command_ptr = 0;
     command_valid = false;   
-    delay(500);
+    delay(1000);
     queryCommands();
-  }
+  }else last_connected = client.connected();
 }
