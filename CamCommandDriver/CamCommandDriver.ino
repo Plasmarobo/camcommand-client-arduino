@@ -14,6 +14,8 @@
 #define CENTER_TILT 't'
 #define CENTER_PAN 'p'
 
+#define DEBUG
+
 #define BIG_ADJUST 32
 
 #include <Wire.h>
@@ -35,7 +37,9 @@ char serialCmd;
 int setTilt(uint8_t tilt)
 {
   double pulse = MIN_TILT + (TILT_SWING*((double)tilt/255.0));
+#ifdef DEBUG
   Serial.println("Tilt: "); Serial.println(pulse);
+#endif
   if(pulse < MIN_TILT) pulse = MIN_TILT;
   if(pulse > MAX_TILT) pulse = MAX_TILT; 
   //setServoPulse(TILT_SERVO, pulse);
@@ -45,7 +49,9 @@ int setTilt(uint8_t tilt)
 int setPan(uint8_t pan)
 {
   double pulse = MIN_PAN + (PAN_SWING*((double)pan/255.0));
+#ifdef DEBUG
   Serial.println("Pan: "); Serial.println(pulse);
+#endif
   if(pulse < MIN_PAN) pulse = MIN_PAN;
   if(pulse > MAX_PAN) pulse = MAX_PAN;
   //setServoPulse(PAN_SERVO, pulse);
@@ -95,84 +101,114 @@ void adjust(char byteRecieved, uint8_t adjustment = 1)
 // Enter a MAC address for your controller below.
 // Newer Ethernet shields have a MAC address printed on a sticker on the shield
 byte mac[] = { 0x90, 0xA2, 0xDA, 0x0D, 0x33, 0x49 };
-// if you don't want to use DNS (and reduce your sketch size)
-// use the numeric IP instead of the name for the server:
-//IPAddress server(74,125,232,128);  // numeric IP for Google (no DNS)
-char server[] = "camcommand.herokuapp.com";    // name address for Google (using DNS)
+char server[] = "camcommand.herokuapp.com";    
 IPAddress ip(192,168,0,18);
 EthernetClient client;
 
-char timestamp[] = "0000000000";
+
 char buffer[256];
 uint8_t buffer_ptr = 0;
 uint8_t command_ptr = 0;
+uint32_t current_time = 0;
+boolean command_valid = false;
 
 void queryCommands()
 {
   if (client.connect(server, 80)) {
-    Serial.println("connected");
+    #ifdef DEBUG
+    Serial.println("Sending Query");
+    #endif
     // Make a HTTP request:
-    client.println("GET /command?timestamp=0 HTTP/1.1");
+    sprintf(buffer, "GET /commands/list.txt?timestamp=%i HTTP/1.1", current_time);
+    client.println(buffer);
     client.println("Host: camcommand.herokuapp.com");
     client.println("Connection: close");
     client.println();
   } 
 }
 
+void sendClear()
+{
+  delay(100
+  if (client.connect(server, 80)) {
+    #ifdef DEBUG
+    Serial.println("Sending Clear");
+    #endif
+    // Make a HTTP request:
+    client.println( "GET /commands/clear?confirm=yes HTTP/1.1");
+    client.println("Host: camcommand.herokuapp.com");
+    client.println("Connection: close");
+    client.println();
+    while(client.connected())
+    {
+      client.flush();
+    }
+  }
+}
 
 void setup()
 {
+  #ifdef DEBUG
   Serial.begin(9600);
   Serial.println("Centering");
+  #endif
   pwm.begin();
   pwm.setPWMFreq(60);
   setPan(user_pan);
   setTilt(user_tilt);
   
   if (Ethernet.begin(mac) == 0) {
+    #ifdef DEBUG
     Serial.println("Failed to configure Ethernet using DHCP");
+    #endif
     // no point in carrying on, so do nothing forevermore:
     // try to congifure using IP address instead of DHCP:
     Ethernet.begin(mac, ip);
   }
   delay(1000);
+  #ifdef DEBUG
   Serial.println("connecting...");
-
+  #endif
   queryCommands();
   
 }
 void loop()
 {
+  #ifdef DEBUG
     if (Serial.available() > 0) {
       // read the incoming byte:
       serialCmd = Serial.read();
       //Simple command routine
       adjust(serialCmd);
-      delay(500);
      }
+   #endif
      // from the server, read them and print them:
     if (client.available()) {
       buffer[buffer_ptr] = client.read();
-      if(buffer[buffer_ptr] == ':')
+      if(buffer[buffer_ptr] == '\n')
       {
-        command_ptr = ++buffer_ptr;
-      }
-      else
+        if(command_valid)
+          adjust(buffer[command_ptr])
+        buffer_ptr = 0;
+        command_ptr = 0;
+        command_valid = false;
+      }else if(buffer[buffer_ptr] ==':')
       {
-        ++buffer_ptr;
-      }
+        command_valid = true;
+        buffer[buffer_ptr] = '\0';
+        command_ptr = buffer_ptr++;
+      }else ++buffer_ptr;      
     }
     // if the server's disconnected, stop the client:
   if (!client.connected()) {
-    //Translate buffer
-    
+    client.stop();
+    //We might need to process the last line of the buffer if it's EOF instead of newline
+    sendClear();
     //Reset
     buffer_ptr = 0;
     command_ptr = 0;
-    client.stop();
+    command_valid = false;   
     delay(500);
     queryCommands();
-    
-    
   }
 }
