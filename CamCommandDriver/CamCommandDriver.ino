@@ -14,7 +14,7 @@
 #define CENTER_TILT 't'
 #define CENTER_PAN 'p'
 
-#define DEBUG
+//#define DEBUG
 
 #define DEFAULT_ADJUST 4
 #define BIG_ADJUST 32
@@ -55,7 +55,7 @@ char serialCmd;
 char time_buffer[256];
 
 uint8_t time_ptr = 0;
-uint32_t current_time = 0;
+long current_time = 0;
 boolean last_connected = false;
 
 int setTilt(uint8_t tilt)
@@ -142,23 +142,8 @@ void queryCommands()
 #endif
   char buffer[256];
   // Make a HTTP request:
-  sprintf(buffer, "GET /commands/list.txt?timestamp=%u HTTP/1.1", current_time);
+  sprintf(buffer, "GET /commands/list.txt?time=%lu HTTP/1.1", current_time);
   HTTP(buffer); 
-}
-
-void clearCommands()
-{
-#ifdef DEBUG
-    Serial.println("clearComands");
-#endif
-  char buffer[256];
-  sprintf(buffer, "GET /commands/clear?confirm=yes HTTP/1.1");
-  HTTP(buffer);
-  if(client.connected())
-  {
-    client.flush();
-    client.stop();
-  }
 }
 
 boolean connectionReady()
@@ -184,7 +169,6 @@ void parseCommandStream()
   //FSM model
   char data = -1;
   uint8_t state = DETECT_TIME_STATE;
-  boolean needs_clear = false;
   
   while(client.available() > 0)
   {
@@ -232,7 +216,7 @@ void parseCommandStream()
         }else{
           //Intentionally discard data
           time_buffer[time_ptr] = '\0';
-          current_time = atoi(time_buffer);
+          current_time = atol(time_buffer);
 #ifdef DEBUG
             Serial.println("Read Time As");
             Serial.println(current_time);
@@ -250,7 +234,6 @@ void parseCommandStream()
 #endif
         //Execute command
         adjust(data);
-        needs_clear = true;
         state = DETECT_TIME_STATE;
         break;
         
@@ -260,21 +243,12 @@ void parseCommandStream()
          break;
 
       default:
-        needs_clear = false;
         time_ptr = 0;
         state = DETECT_TIME_STATE;
         break;
     }
   }
   client.stop();
-#ifdef DEBUG
-            Serial.println("Issue clear?");
-            Serial.println(needs_clear);
-#endif
-  if( needs_clear == true )
-  {
-    //clearCommands();
-  }
 }
 
 void setup()
