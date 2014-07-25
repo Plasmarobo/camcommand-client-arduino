@@ -26,9 +26,10 @@
 #define TILT_CENTER 70
 #define PAN_CENTER 127
 
-#define DISCARD_INPUT_STATE 0
+#define DETECT_TIME_STATE 0
 #define TIME_READ_STATE 1
 #define COMMAND_READ_STATE 2
+#define DISCARD_LINE_STATE 3
 
 
 #include <Wire.h>
@@ -52,7 +53,6 @@ uint8_t user_pan = 127;
 char serialCmd;
 
 char time_buffer[256];
-char command_buffer;
 
 uint8_t time_ptr = 0;
 uint32_t current_time = 0;
@@ -114,11 +114,12 @@ void adjust(char byteRecieved, uint8_t adjustment = DEFAULT_ADJUST)
   setTilt(user_tilt);
 }
 
-void HTTP(char *request)
+void HTTP(char* request)
 {
   if (client.connect(server, 80)) {
 #ifdef DEBUG
-    Serial.println("Sending Query");
+    Serial.println("HTTP Request");
+    Serial.println(request);
 #endif
     client.println(request);
     client.println("Host: camcommand.herokuapp.com");
@@ -131,10 +132,14 @@ void HTTP(char *request)
 #endif
     client.stop();
   }
+  delay(500);
 }
 
 void queryCommands()
 {
+#ifdef DEBUG
+    Serial.println("queryCommands");
+#endif
   char buffer[256];
   // Make a HTTP request:
   sprintf(buffer, "GET /commands/list.txt?timestamp=%u HTTP/1.1", current_time);
@@ -143,7 +148,12 @@ void queryCommands()
 
 void clearCommands()
 {
-  HTTP("GET /commands/clear?confirm=yes HTTP/1.1");
+#ifdef DEBUG
+    Serial.println("clearComands");
+#endif
+  char buffer[256];
+  sprintf(buffer, "GET /commands/clear?confirm=yes HTTP/1.1");
+  HTTP(buffer);
   if(client.connected())
   {
     client.flush();
@@ -172,23 +182,28 @@ boolean isDigit(char data)
 void parseCommandStream()
 {
   //FSM model
-  char data = 0;
-  uint8_t state = DISCARD_INPUT_STATE;
-
+  char data = -1;
+  uint8_t state = DETECT_TIME_STATE;
+  boolean needs_clear = false;
+  
   while(client.available() > 0)
   {
     data = client.read();
+    
     if(data == -1)
       break;
+      
     switch(state)
     {
-      case DISCARD_INPUT_STATE:
+      
+      case DETECT_TIME_STATE:
         if(!isDigit(data))
         {
 #ifdef DEBUG
           Serial.write(data);
-          delay(10);
+          delay(100);
 #endif
+          state = DISCARD_LINE_STATE;
           break;
         }else{
           time_ptr = 0;
@@ -203,7 +218,7 @@ void parseCommandStream()
         {
 #ifdef DEBUG
           Serial.write(data);
-          delay(10);
+          delay(100);
 #endif
           if(isDigit(data))
           {
@@ -212,7 +227,7 @@ void parseCommandStream()
 #ifdef DEBUG
             Serial.println("Invalid character");
 #endif
-            state = DISCARD_INPUT_STATE;
+            state = DISCARD_LINE_STATE;
           }
         }else{
           //Intentionally discard data
@@ -227,16 +242,34 @@ void parseCommandStream()
 #ifdef DEBUG
             Serial.println("Command Accepted");
             Serial.println(data);
+            delay(1000);
 #endif
-        command = data;
         //Execute command
-        adjust(command);
-        state = DISCARD_INPUT_STATE;
+        adjust(data);
+        needs_clear = true;
+        state = DETECT_TIME_STATE;
         break;
+        
+       case DISCARD_LINE_STATE:
+         if (data == '\n')
+          state = DETECT_TIME_STATE;
+         break;
 
       default:
+        needs_clear = false;
+        time_ptr = 0;
+        state = DETECT_TIME_STATE;
         break;
     }
+  }
+  client.stop();
+#ifdef DEBUG
+            Serial.println("Issue clear?");
+            Serial.println(needs_clear);
+#endif
+  if( needs_clear == true )
+  {
+    clearCommands();
   }
 }
 
@@ -276,8 +309,6 @@ void loop()
   if(connectionReady())
   {
     parseCommandStream();
-    clearCommands(); //Accumulate commands  
-    delay(1000);
   }else{
     queryCommands();
   }
