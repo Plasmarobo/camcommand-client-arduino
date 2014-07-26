@@ -14,10 +14,11 @@
 #define CENTER_TILT 't'
 #define CENTER_PAN 'p'
 
-//#define DEBUG
+#define DEBUG
+#define DEBUG_DELAY 10
 
-#define DEFAULT_ADJUST 4
-#define BIG_ADJUST 32
+#define DEFAULT_ADJUST 8
+#define BIG_ADJUST 64
 
 //Expect Servos in slot 1 and slot 2
 #define TILT_SERVO 1
@@ -31,6 +32,7 @@
 #define COMMAND_READ_STATE 2
 #define DISCARD_LINE_STATE 3
 
+#define NETWORK_TIME_PAD 150
 
 #include <Wire.h>
 //Requires Adafruit servo driver
@@ -94,10 +96,10 @@ void adjust(char byteRecieved, uint8_t adjustment = DEFAULT_ADJUST)
       user_tilt += adjustment;
       break;
     case LEFT:
-      user_pan += adjustment;
+      user_pan -= adjustment;
       break;
     case RIGHT:
-      user_pan -= adjustment;
+      user_pan += adjustment;
       break;
     case CENTER_PAN:
       user_pan = PAN_CENTER;
@@ -132,7 +134,7 @@ void HTTP(char* request)
 #endif
     client.stop();
   }
-  delay(150);
+  delay(NETWORK_TIME_PAD);
 }
 
 void queryCommands()
@@ -185,7 +187,7 @@ void parseCommandStream()
         {
 #ifdef DEBUG
           Serial.write(data);
-          delay(100);
+          delay(DEBUG_DELAY);
 #endif
           state = DISCARD_LINE_STATE;
           break;
@@ -202,7 +204,7 @@ void parseCommandStream()
         {
 #ifdef DEBUG
           Serial.write(data);
-          delay(100);
+          delay(DEBUG_DELAY);
 #endif
           if(isDigit(data))
           {
@@ -230,7 +232,7 @@ void parseCommandStream()
 #ifdef DEBUG
             Serial.println("Command Accepted");
             Serial.println(data);
-            delay(1000);
+            delay(DEBUG_DELAY);
 #endif
         //Execute command
         adjust(data);
@@ -249,6 +251,7 @@ void parseCommandStream()
     }
   }
   client.stop();
+  delay(250);
 }
 
 void setup()
